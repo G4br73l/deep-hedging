@@ -6,15 +6,16 @@ import numpy as np
 
 S0      = 1.0    # initial stock price (normalised to 1)
 K       = 1.0    # strike price        (ATM since S0 = K)
-r       = 0.0    # risk-free rate      (zero keeps things clean)
+r       = 0.0    # risk-free rate      
 sigma   = 0.2    # annual volatility   (20%)
 T       = 1.0    # option maturity     (1 year)
 N_steps = 50     # hedging steps       (roughly weekly)
-N_train = 20000  # paths for training
-N_val   = 5000   # paths for validation
+N_train = 50000  # paths for training
+N_val   = 10000   # paths for validation
 
-
-# GBM
+#--------------
+# GBM paths
+#--------------
 def simulate_gbm(N_paths, S0, r, sigma, T, N_steps):
     """
     Simulate GBM paths via exact Euler-Maruyama on log S.
@@ -43,7 +44,10 @@ def simulate_gbm(N_paths, S0, r, sigma, T, N_steps):
     return torch.cat([S0_col, S_future], dim=1)
 
 
-# Heston model (Anderson QE) 
+
+#---------------------------
+# Heston model (Andersen QE) 
+#---------------------------
 def simulate_heston_qe(
     N_paths,
     S0,
@@ -96,7 +100,6 @@ def simulate_heston_qe(
     V_path : torch.Tensor [N_paths, N_steps + 1]
         Variance process paths. V_path[:, t] = V_t sampled by the QE scheme.
         This is the hidden state: do NOT feed it as a transformer feature.
-        Use it only for the delta-vega oracle benchmark.
     VS     : torch.Tensor [N_paths, N_steps + 1]
         Variance swap mid-price at each time step, following Buehler et al.
         (2019) equations (5.3)-(5.4):
@@ -164,7 +167,6 @@ def simulate_heston_qe(
     for t in range(N_steps):
 
         # Step 1: Conditional moments of V(t+dt) given V(t)
-        #
         m   = theta + (V - theta) * e_kdt      # conditional mean    [N_paths]
         s2  = V * cir_cv + cir_cc              # conditional variance [N_paths]
         psi = s2 / m.pow(2)                    # shape parameter      [N_paths]
@@ -267,10 +269,7 @@ def simulate_heston_qe(
 
 
 
-
-
-
-## Plot Heston volatiliy paths (Anderson QE scheme)
+## Plot Heston volatiliy paths (Andersen QE scheme)
 
 # if __name__ == "__main__":
 
@@ -322,6 +321,4 @@ def simulate_heston_qe(
 #     plt.tight_layout()
 #     plt.savefig("heston_paths.png", dpi=150)
 #     plt.show()
-
-
 
