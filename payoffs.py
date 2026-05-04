@@ -29,7 +29,7 @@ def lookback_call(S):
     running_min = S.min(dim=1).values  # [N_paths]: global minimum over the path
     return S[:, -1] - running_min      # S_T - m_T
 
-# Down-and-out call option payoff
+# Down-and-out call option payoff (discrete monitoring only)
 def barrier_DOC(S, K, B):
     not_knocked_out = S.min(dim=1).values > B          # [N_paths], bool
     # Payoff is the vanilla call where active, zero otherwise
