@@ -96,6 +96,46 @@ class CausalMultiHeadSelfAttention(nn.Module):
 
         return out
 
+    def forward_with_attn(self, x: torch.Tensor):
+        """
+        Identical to forward but also returns the attention weight matrix.
+
+        Used exclusively by TransformerHedgeNet.get_attention_weights for
+        visualisation.  The forward method is not modified.
+
+        Parameters
+        ----------
+        x : torch.Tensor  [N, seq, d_model]
+
+        Returns
+        -------
+        output      : torch.Tensor  [N, seq, d_model]
+        attn_weights: torch.Tensor  [N, n_heads, seq, seq]
+            Softmax attention weights after causal masking.
+            Upper triangle is 0 (masked future steps).
+        """
+        N, seq, _ = x.shape
+
+        Q = self._split_heads(self.W_q(x))
+        K = self._split_heads(self.W_k(x))
+        V = self._split_heads(self.W_v(x))
+
+        scale  = math.sqrt(self.d_k)
+        scores = torch.matmul(Q, K.transpose(-2, -1)) / scale
+
+        causal_mask = torch.tril(
+            torch.ones(seq, seq, device=x.device, dtype=torch.bool)
+        )
+        scores = scores.masked_fill(~causal_mask, float('-inf'))
+
+        attn_weights = torch.softmax(scores, dim=-1)   # [N, n_heads, seq, seq]
+
+        out = torch.matmul(attn_weights, V)
+        out = self._merge_heads(out)
+        out = self.W_o(out)
+
+        return out, attn_weights
+
 
 # 2.  Position-wise Feed-Forward Block
 
@@ -162,13 +202,28 @@ class PreLNTransformerBlock(nn.Module):
         -------
         x : torch.Tensor  [N, seq, d_model]
         """
-        # Attention sub-layer: normalise first, then add residual
         x = x + self.attention(self.layer_norm_1(x))
-
-        # Feed-forward sub-layer: normalise first, then add residual
         x = x + self.feed_forward(self.layer_norm_2(x))
-
         return x
+
+    def forward_with_attn(self, x: torch.Tensor):
+        """
+        Identical to forward but also returns attention weights from the
+        attention sublayer.  Used by TransformerHedgeNet.get_attention_weights.
+
+        Parameters
+        ----------
+        x : torch.Tensor  [N, seq, d_model]
+
+        Returns
+        -------
+        x           : torch.Tensor  [N, seq, d_model]
+        attn_weights: torch.Tensor  [N, n_heads, seq, seq]
+        """
+        attn_out, attn_weights = self.attention.forward_with_attn(self.layer_norm_1(x))
+        x = x + attn_out
+        x = x + self.feed_forward(self.layer_norm_2(x))
+        return x, attn_weights
 
 
 # 4.  Causal Transformer Hedge Network
@@ -288,3 +343,147 @@ class TransformerHedgeNet(nn.Module):
         deltas = deltas.squeeze(-1)    # [N, T]
 
         return deltas
+
+    def get_attention_weights(self, features: torch.Tensor):
+        """
+        Forward pass that additionally captures the attention weight matrix
+        produced by every Transformer block.
+
+        This method is used only for visualisation and is never called during
+        training or standard evaluation.  The forward method is not modified.
+
+        Parameters
+        ----------
+        features : torch.Tensor  [N, T, n_features]
+
+        Returns
+        -------
+        deltas    : torch.Tensor  [N, T]
+            Hedge ratios (same as forward).
+        attn_list : list of torch.Tensor, length n_blocks
+            attn_list[l] has shape [N, n_heads, T, T].
+            attn_list[l][n, h, q, k] is the attention weight that head h of
+            block l assigns to key step k when processing query step q, for
+            path n.  Upper triangle is 0 (causal mask).
+        """
+        N, T, _ = features.shape
+
+        # Replicate the forward pass step-by-step so we can capture attention
+        x = self.input_projection(features)
+
+        positions = torch.arange(T, device=features.device)
+        x = x + self.positional_embedding(positions).unsqueeze(0)
+
+        attn_list = []
+        for block in self.transformer_blocks:
+            x, attn_weights = block.forward_with_attn(x)   # [N, n_heads, T, T]
+            attn_list.append(attn_weights)
+
+        x      = self.final_layer_norm(x)
+        deltas = self.output_head(x).squeeze(-1)
+
+        return deltas, attn_list
+
+
+# 5.  Multi-Instrument Causal Transformer Hedge Network
+#
+# The sole difference from TransformerHedgeNet: the output head emits
+# n_instruments values per position instead of one.  forward() therefore
+# returns [N, T, n_instruments] instead of [N, T].
+
+class TransformerHedgeNetMulti(nn.Module):
+    """
+    Causal Transformer for deep hedging with multiple hedging instruments.
+
+    Identical in architecture to TransformerHedgeNet except that the output
+    head produces n_instruments hedge ratios per timestep:
+
+        deltas = model(features)     features: [N, T, n_features]
+                                     deltas:   [N, T, n_instruments]
+
+    deltas[:, :, 0] is the stock hedge ratio; deltas[:, :, 1] is the
+    variance-swap hedge ratio (for n_instruments=2).  The causal mask inside
+    each attention block guarantees that delta_t still depends only on
+    features at times 0 ... t -- there is no lookahead.
+
+    Parameters
+    ----------
+    n_features    : int  -- number of input features per timestep  (default 4)
+    d_model       : int  -- embedding / hidden dimension            (default 64)
+    n_heads       : int  -- number of attention heads               (default 4)
+    d_ff          : int  -- feed-forward expansion dimension        (default 256)
+    n_blocks      : int  -- number of stacked Transformer blocks    (default 2)
+    max_len       : int  -- maximum sequence length supported       (default 100)
+    n_instruments : int  -- number of hedging instruments           (default 2)
+    """
+
+    def __init__(
+        self,
+        n_features    : int = 4,
+        d_model       : int = 64,
+        n_heads       : int = 4,
+        d_ff          : int = 256,
+        n_blocks      : int = 2,
+        max_len       : int = 100,
+        n_instruments : int = 2,
+    ):
+        super().__init__()
+
+        self.d_model       = d_model
+        self.n_instruments = n_instruments
+
+        # Input projection: maps n_features -> d_model at every position
+        self.input_projection = nn.Linear(n_features, d_model)
+
+        # Learned positional embedding (one d_model vector per position index)
+        self.positional_embedding = nn.Embedding(max_len, d_model)
+
+        # Stacked Pre-LN Transformer blocks (reuse the same block class)
+        self.transformer_blocks = nn.ModuleList([
+            PreLNTransformerBlock(d_model, n_heads, d_ff)
+            for _ in range(n_blocks)
+        ])
+
+        # Final LayerNorm applied to the residual stream before the output head
+        self.final_layer_norm = nn.LayerNorm(d_model, eps=1e-6)
+
+        # Multi-instrument output head: projects d_model -> n_instruments.
+        # No activation: hedge ratios are unconstrained real numbers.
+        self.output_head = nn.Linear(d_model, n_instruments)
+
+    def forward(self, features: torch.Tensor) -> torch.Tensor:
+        """
+        Parameters
+        ----------
+        features : torch.Tensor  [N, T, n_features]
+            Full sequence of market features for each path.
+
+        Returns
+        -------
+        deltas : torch.Tensor  [N, T, n_instruments]
+            Hedge ratios for all instruments at every (path, step) pair.
+            deltas[n, t, i] depends only on features[n, 0:t+1] (causal guarantee).
+        """
+        N, T, _ = features.shape
+
+        # 1. Project raw features to model dimension
+        x = self.input_projection(features)   # [N, T, d_model]
+
+        # 2. Add learned positional embeddings
+        positions = torch.arange(T, device=features.device)   # [T]
+        pos_emb   = self.positional_embedding(positions)       # [T, d_model]
+        x = x + pos_emb.unsqueeze(0)                          # [N, T, d_model]
+
+        # 3. Pass through all Transformer blocks (causal attention at each)
+        for block in self.transformer_blocks:
+            x = block(x)   # [N, T, d_model]
+
+        # 4. Final layer normalisation
+        x = self.final_layer_norm(x)   # [N, T, d_model]
+
+        # 5. Project to n_instruments outputs per position
+        # No squeeze: we intentionally keep the instrument dimension.
+        deltas = self.output_head(x)   # [N, T, n_instruments]
+
+        return deltas
+
