@@ -92,6 +92,7 @@ from gym_prev_delta      import (
 ROOT_DIR  = os.path.dirname(SRC_DIR)
 RESULTS_DIR = os.path.join(ROOT_DIR, "results")
 FIGURES_DIR = os.path.join(ROOT_DIR, "figures")
+LOG_PATH    = os.path.join(RESULTS_DIR, "barrier_pd_log.txt")
 os.makedirs(RESULTS_DIR, exist_ok=True)
 os.makedirs(FIGURES_DIR, exist_ok=True)
 
@@ -556,7 +557,25 @@ def plot_convergence(
 # MAIN EXPERIMENT
 # ===========================================================================
 
+class _Tee:
+    """Duplicate sys.stdout to a log file (line-buffered)."""
+    def __init__(self, log_path):
+        self._file   = open(log_path, "w", buffering=1)
+        self._stdout = sys.stdout
+        sys.stdout   = self
+    def write(self, msg):
+        self._stdout.write(msg)
+        self._file.write(msg)
+    def flush(self):
+        self._stdout.flush()
+        self._file.flush()
+    def close(self):
+        sys.stdout = self._stdout
+        self._file.close()
+
+
 def main():
+    _tee = _Tee(LOG_PATH)
     print("=" * 65)
     print("  Experiment 3: Heston DOC deep hedging")
     print("=" * 65)
@@ -744,6 +763,7 @@ def main():
         save_path  = os.path.join(FIGURES_DIR, "barrier_pd_cvar_convergence.pdf"),
     )
 
+    _tee.close()
     print("\n" + "=" * 65)
     print("  Experiment 3 complete.")
     print("=" * 65)
