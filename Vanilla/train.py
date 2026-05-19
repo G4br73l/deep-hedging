@@ -1,14 +1,20 @@
+import os, sys
+_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+for _p in [_ROOT, os.path.join(_ROOT, 'networks'), os.path.join(_ROOT, 'gym')]:
+    if _p not in sys.path:
+        sys.path.insert(0, _p)
+
 import torch
 import torch.nn as nn
 import torch.optim as optim
 import matplotlib.pyplot as plt
 
 from simulate import simulate_gbm
-from network  import DeltaHedgeNet
+from network_MLP  import DeltaHedgeNet
 from loss     import cvar
 from Vanilla.gym      import compute_gains
 from payoffs  import call, put
-from bs       import BSModel, BSdelta, BSprice
+from Vanilla.bs       import BSModel, BSdelta, BSprice
 
 
 def train_deep_hedging(

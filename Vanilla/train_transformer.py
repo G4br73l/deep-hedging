@@ -1,3 +1,9 @@
+import os, sys
+_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+for _p in [_ROOT, os.path.join(_ROOT, 'networks'), os.path.join(_ROOT, 'gym')]:
+    if _p not in sys.path:
+        sys.path.insert(0, _p)
+
 import torch
 import torch.nn as nn
 import matplotlib.pyplot as plt
@@ -6,7 +12,7 @@ import numpy as np
 from simulate            import simulate_gbm
 from gym_transformer     import compute_gains_transformer
 from loss                import cvar
-from bs                  import BSprice, BSModel
+from Vanilla.bs                  import BSprice, BSModel
 from payoffs             import call
 from Vanilla.gym                 import compute_gains
 from network_transformer import TransformerHedgeNet
@@ -117,20 +123,6 @@ def train_transformer(
     return eta, history, gains_before, gains_after, gains_bs
 
 
-# Entry point
-# -----------
-# GBM + vanilla call baseline: validates that the Transformer recovers the
-# Black-Scholes delta in a frictionless (c=0) or near-frictionless (c=0.001)
-# world, exactly mirroring the MLP validation in train.py.
-#
-# Parameters follow CLAUDE.md:
-#   S0=1.0, K=1.0, r=0.0, sigma=0.2, T=1.0, N_steps=50
-#   N_train=20000, N_val=5000, batch_size=5000, epochs=2000
-#   lr=1e-3, alpha=0.05, c=0.001
-#
-# The Transformer uses n_features=2 (moneyness kappa=S/K, normalised tau)
-# to match build_feature_matrix in gym_transformer.py.
-# No prev_delta in the input: fully parallel training.
 
 if __name__ == "__main__":
 
