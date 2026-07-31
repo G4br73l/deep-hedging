@@ -23,43 +23,46 @@ Every Heston/lookback experiment is run twice: once with the full, hand-engineer
 
 ## Findings
 
-Stochastic variance under Heston creates long-range temporal dependencies that a Markovian, single-step state doesn't capture — and the benefit of a sequence model tracks that directly:
+Stochastic variance under Heston creates long-range temporal dependencies that a Markovian, single-step state doesn't capture, and the paper's central result is that the benefit of a sequence model tracks that directly:
 
-- **Asian option (Heston):** the Transformer achieves a meaningful CVaR improvement over both the MLP and LSTM.
-- **Barrier option (Heston):** the running minimum is close to a sufficient statistic on its own, and all three architectures land near the same tail risk.
-- **Feeding back the previous hedge position** does not improve hedging quality at the transaction-cost level used throughout; in the Asian experiments it substantially degrades performance, erasing most of the Transformer's advantage.
+- **Asian option (Heston), main comparison:** the Transformer achieves a meaningful CVaR improvement over both the MLP and LSTM.
+- **Barrier option (Heston), main comparison:** the running minimum is close to a sufficient statistic on its own, and the gap between architectures narrows.
+- **A further ablation** tests whether feeding the policy its own previous hedge ratio as an input feature helps. It doesn't: at the transaction-cost level used throughout, it produces no benefit, and in the Asian option it substantially degrades performance, erasing most of the Transformer's advantage over the LSTM.
 
-Representative test-set results (CVaR at α=0.05, evaluated on 50,000 held-out paths; less negative is better; full numbers in `results/*_summary.json`):
+The table below is real test-set output from this repo's `prev_delta/` runs (`results/*_pd_summary.json` — the raw run artifacts synced here), i.e. every row already includes the previous-hedge-ratio feature described in the last bullet above. It is not the paper's primary baseline table (see `docs/paper.pdf` for that), but it does show the ablation finding directly: on Asian, LSTM and Transformer are within noise of each other rather than the Transformer pulling ahead.
+
+CVaR at α=0.05, evaluated on 50,000 held-out paths, less negative is better:
 
 | Experiment | MLP | LSTM | Transformer | Analytical |
 |---|---|---|---|---|
-| Asian (full features) | −1.761 | −1.570 | **−1.571** | — |
+| Asian (full features) | −1.761 | −1.570 | −1.571 | — |
 | Asian (reduced features) | −1.806 | −1.589 | −1.577 | — |
-| Barrier (full features) | −0.0324 | −0.0255 | **−0.0252** | — |
+| Barrier (full features) | −0.0324 | −0.0255 | −0.0252 | — |
 | Barrier (reduced features) | −0.0326 | −0.0262 | −0.0259 | — |
-| Lookback (full features) | −0.0372 | −0.0363 | **−0.0364** | −0.0538 |
-| Lookback (reduced features) | −0.0721 | −0.0402 | **−0.0390** | −0.0538 |
+| Lookback (full features) | −0.0372 | −0.0363 | −0.0364 | −0.0538 |
+| Lookback (reduced features) | −0.0721 | −0.0402 | −0.0390 | −0.0538 |
 
-Note the lookback row: every learned policy beats the textbook closed-form delta once transaction costs and discrete rebalancing are priced in — which is precisely the gap deep hedging is designed to close.
+Two things hold even in this ablation setting: the memoryless MLP is consistently the weakest of the three across every experiment, and every learned policy comfortably beats the closed-form analytical lookback delta once transaction costs and discrete rebalancing are priced in — precisely the gap deep hedging is designed to close.
 
 ## Repository structure
 
 ```
 .
-├── docs/paper.pdf              # full write-up (this project's semester paper)
-├── simulate.py                  # GBM and Heston (Andersen QE) simulators + variance swap pricing
-├── payoffs.py                   # call, put, Asian, lookback, down-and-out barrier
+├── docs/
+│   ├── paper.pdf                 # full write-up (this project's semester paper)
+│   └── EULER_README.md           # cluster training guide (ETH Euler)
+├── simulate.py                   # GBM and Heston (Andersen QE) simulators + variance swap pricing
+├── payoffs.py                    # call, put, Asian, lookback, down-and-out barrier
 ├── loss.py                       # CVaR (Rockafellar-Uryasev) loss
 ├── bs_lookback.py                # closed-form lookback pricer/delta (benchmark)
 ├── networks/                     # MLP, LSTM, and causal-Transformer policies
-├── gym/                           # feature builders + P&L / transaction-cost accounting
-├── Vanilla/                       # warm-up: GBM vanilla call/put vs. Black-Scholes
-├── no_prev_delta/                 # main experiments: lookback, Heston Asian, Heston barrier (+ reduced-feature ablations)
-├── prev_delta/                    # same experiments, with the previous hedge ratio fed back as a feature
-├── results/                       # summary metrics (JSON) from the runs above
-├── figures/                       # gain distributions, P&L decomposition, CVaR convergence plots
-├── run_prev_delta.sbatch          # SLURM array job (cluster reproduction)
-└── docs/EULER_README.md           # cluster training guide (ETH Euler)
+├── gym/                          # feature builders + P&L / transaction-cost accounting
+├── Vanilla/                      # warm-up: GBM vanilla call/put vs. Black-Scholes
+├── no_prev_delta/                # main experiments: lookback, Heston Asian, Heston barrier (+ reduced-feature ablations)
+├── prev_delta/                   # same experiments, with the previous hedge ratio fed back as a feature
+├── results/                      # summary metrics (JSON) from the runs above
+├── figures/                      # gain distributions, P&L decomposition, CVaR convergence plots
+└── run_prev_delta.sbatch         # SLURM array job (cluster reproduction)
 ```
 
 ## The hedging objective
