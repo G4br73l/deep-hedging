@@ -22,11 +22,19 @@ See gym_prev_delta.py for details.
 All other parameters are IDENTICAL to compare_heston_asian_reduced.py.
 """
 
-import copy
+# ---------------------------------------------------------------------------
+# CPU thread pinning (must run before any heavy torch work).
+# Honour SLURM_CPUS_PER_TASK if set, otherwise default to 16.
+# ---------------------------------------------------------------------------
 import os
+import torch
+_N_THREADS = int(os.environ.get("SLURM_CPUS_PER_TASK", 16))
+torch.set_num_threads(_N_THREADS)
+torch.set_num_interop_threads(1)
+
+import copy
 import sys
 import json
-import torch
 import torch.nn as nn
 import numpy as np
 import matplotlib
