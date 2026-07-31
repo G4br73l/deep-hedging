@@ -31,16 +31,16 @@ Stochastic variance under Heston creates long-range temporal dependencies that a
 
 The table below is real test-set output from this repo's `prev_delta/` runs (`results/*_pd_summary.json` — the raw run artifacts synced here), i.e. every row already includes the previous-hedge-ratio feature described in the last bullet above. It is not the paper's primary baseline table (see `docs/paper.pdf` for that), but it does show the ablation finding directly: on Asian, LSTM and Transformer are within noise of each other rather than the Transformer pulling ahead.
 
-CVaR at α=0.05, evaluated on 50,000 held-out paths, less negative is better:
+CVaR at α=0.05, evaluated on 50,000 held-out paths, expressed **as a % of spot price** so the six experiments are directly comparable (raw `results/*_pd_summary.json` figures are in absolute price units, and the Asian script normalizes spot to S0=100 while the barrier and lookback scripts use S0=1 — a coding convention, not a difference in risk; dividing by S0 removes it). Less negative is better:
 
 | Experiment | MLP | LSTM | Transformer | Analytical |
 |---|---|---|---|---|
-| Asian (full features) | −1.761 | −1.570 | −1.571 | — |
-| Asian (reduced features) | −1.806 | −1.589 | −1.577 | — |
-| Barrier (full features) | −0.0324 | −0.0255 | −0.0252 | — |
-| Barrier (reduced features) | −0.0326 | −0.0262 | −0.0259 | — |
-| Lookback (full features) | −0.0372 | −0.0363 | −0.0364 | −0.0538 |
-| Lookback (reduced features) | −0.0721 | −0.0402 | −0.0390 | −0.0538 |
+| Asian (full features) | −1.76% | −1.57% | −1.57% | — |
+| Asian (reduced features) | −1.81% | −1.59% | −1.58% | — |
+| Barrier (full features) | −3.24% | −2.55% | −2.52% | — |
+| Barrier (reduced features) | −3.26% | −2.62% | −2.59% | — |
+| Lookback (full features) | −3.72% | −3.63% | −3.64% | −5.38% |
+| Lookback (reduced features) | −7.21% | −4.02% | −3.90% | −5.38% |
 
 Two things hold even in this ablation setting: the memoryless MLP is consistently the weakest of the three across every experiment, and every learned policy comfortably beats the closed-form analytical lookback delta once transaction costs and discrete rebalancing are priced in — precisely the gap deep hedging is designed to close.
 
