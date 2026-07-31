@@ -23,15 +23,13 @@ Every Heston/lookback experiment is run twice: once with the full, hand-engineer
 
 ## Findings
 
-Stochastic variance under Heston creates long-range temporal dependencies that a Markovian, single-step state doesn't capture, and the paper's central result is that the benefit of a sequence model tracks that directly:
+Stochastic variance under Heston creates long-range temporal dependencies that a Markovian, single-step state doesn't capture, and the paper's central result (Table 20) is that the benefit of a sequence model tracks that directly:
 
-- **Asian option (Heston), main comparison:** the Transformer achieves a meaningful CVaR improvement over both the MLP and LSTM.
-- **Barrier option (Heston), main comparison:** the running minimum is close to a sufficient statistic on its own, and the gap between architectures narrows.
-- **A further ablation** tests whether feeding the policy its own previous hedge ratio as an input feature helps. It doesn't: at the transaction-cost level used throughout, it produces no benefit, and in the Asian option it substantially degrades performance, erasing most of the Transformer's advantage over the LSTM.
+- **Asian option (Heston), main comparison:** baseline CVaR is −0.95% (Transformer) vs. −1.18% (LSTM) vs. −1.44% (MLP) — the Transformer's clearest edge in the study.
+- **Barrier option (Heston), main comparison:** baseline CVaR is −2.63% for *both* the LSTM and the Transformer (identical to 4 decimals) vs. −3.21% for the MLP — memory helps, but the recurrent state already captures nearly all of it; attention adds nothing further once a running summary of the path is available.
+- **A further ablation** tests whether feeding the policy its own previous hedge ratio as an input feature helps. It doesn't: at the transaction-cost level used throughout, it produces no benefit, and on the Asian option it substantially degrades performance, erasing most of the Transformer's advantage — CVaR falls to −1.57% (Transformer) vs. −1.57% (LSTM), i.e. statistically tied.
 
-The table below is real test-set output from this repo's `prev_delta/` runs (`results/*_pd_summary.json` — the raw run artifacts synced here), i.e. every row already includes the previous-hedge-ratio feature described in the last bullet above. It is not the paper's primary baseline table (see `docs/paper.pdf` for that), but it does show the ablation finding directly: on Asian, LSTM and Transformer are within noise of each other rather than the Transformer pulling ahead.
-
-CVaR at α=0.05, evaluated on 50,000 held-out paths, expressed **as a % of spot price** so the six experiments are directly comparable (raw `results/*_pd_summary.json` figures are in absolute price units, and the Asian script normalizes spot to S0=100 while the barrier and lookback scripts use S0=1 — a coding convention, not a difference in risk; dividing by S0 removes it). Less negative is better:
+The table below is real test-set output from this repo's `prev_delta/` runs (`results/*_pd_summary.json`, the raw run artifacts synced here) — every row already includes the previous-hedge-ratio feature from the third bullet above. It matches the paper's Table 20 exactly. CVaR at α=0.05 on 50,000 held-out paths, expressed **as a % of spot price** so all six experiments are directly comparable (the Asian script normalizes spot to S0=100 while barrier/lookback use S0=1 — a coding convention, not a difference in risk; dividing by S0 removes it). Less negative is better:
 
 | Experiment | MLP | LSTM | Transformer | Analytical |
 |---|---|---|---|---|
