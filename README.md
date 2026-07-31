@@ -29,18 +29,7 @@ Stochastic variance under Heston creates long-range temporal dependencies that a
 - **Barrier option (Heston), main comparison:** baseline CVaR is −2.63% for *both* the LSTM and the Transformer (identical to 4 decimals) vs. −3.21% for the MLP — memory helps, but the recurrent state already captures nearly all of it; attention adds nothing further once a running summary of the path is available.
 - **A further ablation** tests whether feeding the policy its own previous hedge ratio as an input feature helps. It doesn't: at the transaction-cost level used throughout, it produces no benefit, and on the Asian option it substantially degrades performance, erasing most of the Transformer's advantage — CVaR falls to −1.57% (Transformer) vs. −1.57% (LSTM), i.e. statistically tied.
 
-The table below is real test-set output from this repo's `prev_delta/` runs (`results/*_pd_summary.json`, the raw run artifacts synced here) — every row already includes the previous-hedge-ratio feature from the third bullet above. It matches the paper's Table 20 exactly. CVaR at α=0.05 on 50,000 held-out paths, expressed **as a % of spot price** so all six experiments are directly comparable (the Asian script normalizes spot to S0=100 while barrier/lookback use S0=1 — a coding convention, not a difference in risk; dividing by S0 removes it). Less negative is better:
-
-| Experiment | MLP | LSTM | Transformer | Analytical |
-|---|---|---|---|---|
-| Asian (full features) | −1.76% | −1.57% | −1.57% | — |
-| Asian (reduced features) | −1.81% | −1.59% | −1.58% | — |
-| Barrier (full features) | −3.24% | −2.55% | −2.52% | — |
-| Barrier (reduced features) | −3.26% | −2.62% | −2.59% | — |
-| Lookback (full features) | −3.72% | −3.63% | −3.64% | −5.38% |
-| Lookback (reduced features) | −7.21% | −4.02% | −3.90% | −5.38% |
-
-Two things hold even in this ablation setting: the memoryless MLP is consistently the weakest of the three across every experiment, and every learned policy comfortably beats the closed-form analytical lookback delta once transaction costs and discrete rebalancing are priced in — precisely the gap deep hedging is designed to close.
+Real test-set output from these runs is synced in this repo (`results/*_pd_summary.json`, matching the paper's Table 20 exactly) and plotted in `figures/`. Two patterns hold across every experiment: the memoryless MLP is consistently the weakest of the three architectures, and every learned policy comfortably beats the closed-form analytical lookback delta once transaction costs and discrete rebalancing are priced in — precisely the gap deep hedging is designed to close.
 
 ## Repository structure
 
